@@ -11,7 +11,9 @@ class Sandbox(MQTTModule):
         super().__init__()  
         self.topic_map = {
             "avr/thermal/reading": self.process_thermal_payload,
-            "avr/autonomous/enable": self.process_autonomous_payload
+            "avr/apriltags/visible": self.process_apriltag_payload,
+            "avr/autonomous/enable": self.process_autonomous_payload,
+            "avr/pcm/set_base_color": self.led_flash,
         }
         self.thermal_grid = [[0 for _ in range(8)] for _ in range(8)]
         self.thermal_ideal_coords = None
@@ -20,6 +22,27 @@ class Sandbox(MQTTModule):
         self.autonomous_state = None
 
         self.first_boot = True
+
+        self.apriltag = None
+        self.flashing = False
+
+    def led_flash(self, tupleCol) -> None:
+        if self.flashing:
+            return
+
+        topic = "avr/pcm/set_base_color"
+        payload = AvrPcmSetBaseColorPayload(wrgb=tupleCol)
+        empty_payload = AvrPcmSetBaseColorPayload(wrgb=[255, 0, 0, 0])
+        self.flashing = True
+
+        for i in range(3):
+            self.send_message(topic, payload)
+            time.sleep(.15)
+            self.send_message(topic, empty_payload)
+            time.sleep(.1)  
+
+        self.flashing = False
+
 
     def process_autonomous_payload(self, payload: AvrAutonomousEnablePayload) -> None:
         self.autonomous_state = payload['enabled']
@@ -51,8 +74,11 @@ class Sandbox(MQTTModule):
             self.thermal_ideal_coords = None
             return
         self.thermal_ideal_coords = potential_ideal_temp[0]
-        logger.debug(self.thermal_ideal_coords)
+        # logger.debug(self.thermal_ideal_coords)
     
+    def process_apriltag_payload(self, payload: AvrApriltagsVisiblePayload):
+        self.apriltag = payload['tags']
+
     def set_servo_abs(self, intServo, intAbs) -> None:
         self.send_message(
             "avr/pcm/set_servo_abs",
@@ -70,14 +96,13 @@ class Sandbox(MQTTModule):
         self.send_message(topic, payload)
 
     def thermal_lock(self) -> None:
+        if self.first_boot:
+            time.sleep(10) # wait for pcm initialization
+            self.set_servo_abs(2, 1450)
+            self.set_servo_abs(3, 1450)
+            logger.debug("Centering Gimbal")
+            self.led_flash([255,255,0,0])
         while True:
-            if self.first_boot:
-                time.sleep(10) # wait for pcm initialization
-                self.set_servo_abs(2, 1450)
-                self.set_servo_abs(3, 1450)
-                logger.debug("Centering Gimbal")
-                self.first_boot = False
-
             if self.autonomous_state == True:
                 if not self.thermal_ideal_coords == None:
                     if self.laza_state == False or self.laza_state == None:
@@ -91,12 +116,13 @@ class Sandbox(MQTTModule):
                         # Max of the abs is roughly ~2950
                         # Half is 1450 and 0 is yeah 0
 
-                        
                 else:
                     if self.laza_state == True:
                         self.set_laza(False)
                         logger.debug("Laza eepy")
             time.sleep(1)
+
+    # def led_status()
 
 if __name__ == "__main__":
     box = Sandbox() 
