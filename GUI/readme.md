@@ -24,7 +24,7 @@ python build.py # edit line 12 to just be `"AVRGUI",`,
 Open `dist/` there should be your new AVRGUI.exe 
 
 
-If this is your Second/ ++ time proceed with the following. 
+## If this is your Second/ ++ time proceed with the following. 
 
 cd (directory_of_your_/GUI/) 
 
